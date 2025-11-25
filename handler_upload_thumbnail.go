@@ -69,6 +69,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "invalid content-type", err)
+		return
+	}
+
 	exts, _ := mime.ExtensionsByType(mediaType)
 
 	filename := "assets/" + videoIDString + "." + exts[0]
