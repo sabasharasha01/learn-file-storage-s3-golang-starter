@@ -1,8 +1,14 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -28,10 +34,59 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondWithError(w, http.StatusNotFound, "Invalid video id", err)
+		} else {
+			respondWithError(w, http.StatusInternalServerError, "Something went wrong", err)
+		}
+		return
+	}
+
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized access to video", err)
+		return
+	}
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	const maxMemory = 10 << 20
+	r.ParseMultipartForm(maxMemory)
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	file, header, err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse form file", err)
+		return
+	}
+
+	defer file.Close()
+
+	mediaTypeRaw := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(mediaTypeRaw)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid content-type", err)
+		return
+	}
+
+	exts, _ := mime.ExtensionsByType(mediaType)
+
+	filename := "assets/" + videoIDString + "." + exts[0]
+
+	new_file, err := os.Create(filename)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to save file", err)
+		return
+	}
+
+	_, err = io.Copy(new_file, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to save file", err)
+		return
+	}
+
+	filePath := filepath.Join(cfg.assetsRoot, filename)
+	video.ThumbnailURL = &filePath
+
+	respondWithJSON(w, http.StatusOK, video)
 }
