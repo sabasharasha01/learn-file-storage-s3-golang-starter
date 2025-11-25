@@ -45,7 +45,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	if video.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "Unauthorized access to video", err)
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized access to the video", err)
 		return
 	}
 
@@ -76,7 +76,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	exts, _ := mime.ExtensionsByType(mediaType)
 
-	filename := "assets/" + videoIDString + "." + exts[0]
+	filename := videoIDString + exts[0]
+	filePath := filepath.Join(cfg.assetsRoot, filename)
 
 	new_file, err := os.Create(filename)
 	if err != nil {
@@ -90,8 +91,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	filePath := filepath.Join(cfg.assetsRoot, filename)
 	video.ThumbnailURL = &filePath
+
+	err = cfg.db.UpdateVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to update video", err)
+		return
+	}
 
 	respondWithJSON(w, http.StatusOK, video)
 }
